@@ -1,0 +1,51 @@
+diff --git a/src/py/_pyodide/_base.py b/src/py/_pyodide/_base.py
+index 267b08e..52b3767 100644
+--- a/src/py/_pyodide/_base.py
++++ b/src/py/_pyodide/_base.py
+@@ -136,6 +136,7 @@ def _parse_and_compile_gen(
+     dont_inherit: bool = False,
+     optimize: int = -1,
+     dedent: bool = True,
++    macros: dict[str, Any] | None = None,
+ ) -> Generator[ast.Module, ast.Module, CodeType]:
+     """Parse ``source``, then yield the AST, then compile the AST and return the
+     code object.
+@@ -165,7 +166,9 @@ def _parse_and_compile_gen(
+         _last_expr_to_raise(mod)
+ 
+     ast.fix_missing_locations(mod)
+-    return compile(mod, filename, mode, flags, dont_inherit, optimize)
++    # PEP 638: ``macros`` holds the macros imported by previous inputs of an
++    # interactive session (and receives the ones imported by this input).
++    return compile(mod, filename, mode, flags, dont_inherit, optimize, macros=macros)
+ 
+ 
+ ReturnMode = Literal["last_expr", "last_expr_or_assign", "none"]
+@@ -277,6 +280,7 @@ class CodeRunner:
+         dont_inherit: bool = False,
+         optimize: int = -1,
+         dedent: bool = True,
++        macros: dict[str, Any] | None = None,
+     ):
+         self._compiled = False
+         self._source = source
+@@ -290,6 +294,7 @@ class CodeRunner:
+             dont_inherit=dont_inherit,
+             optimize=optimize,
+             dedent=dedent,
++            macros=macros,
+         )
+         self.ast = next(self._gen)
+ 
+diff --git a/src/py/pyodide/console.py b/src/py/pyodide/console.py
+index a35bba6..44009b5 100644
+--- a/src/py/pyodide/console.py
++++ b/src/py/pyodide/console.py
+@@ -191,6 +191,7 @@ class _Compile(Compile):
+             flags=self.flags,
+             dont_inherit=self.dont_inherit,
+             optimize=self.optimize,
++            macros=self.macros,
+         ).compile()
+         assert code_runner.code
+         for feature in _features:
