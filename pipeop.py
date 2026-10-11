@@ -226,3 +226,26 @@ def pipe(node):
     if not node.body:
         raise SyntaxError("pipe! needs a block or an expression")
     return [transformer.visit(stmt) for stmt in node.body]
+
+
+def _map(node):
+    """``map!(expression)``: a function that maps *expression*, in which
+    ``_`` is the item, over an iterable."""
+    body = node.args
+    if body is None:
+        raise SyntaxError("map! needs an expression: map!(_ * 2)")
+    if isinstance(body, ast.Starred):
+        raise _error("map! takes an expression, not a starred expression",
+                     body)
+    def args(name):
+        return ast.arguments(posonlyargs=[], args=[ast.arg(name)],
+                             kwonlyargs=[], kw_defaults=[], defaults=[])
+    it = macros.new_name(node, "items")
+    item = ast.Lambda(args(PLACEHOLDER), body)
+    call = ast.Call(ast.Name("map", ast.Load()),
+                    [item, ast.Name(it, ast.Load())], [])
+    return ast.Lambda(args(it), call)
+ 
+ 
+# Defined last: from here on "map" is not the builtin in this module.
+map = macros.macro_processor(macros.EXPR_MACRO, 1)(_map)
