@@ -1,7 +1,7 @@
 import ast, macros, unittest, textwrap, operator
 import pipeop
 
-M = {"pipe": pipeop.pipe}
+M = {"pipe": pipeop.pipe, "map": pipeop.map}
 
 def run(src, **ns):
     ns.setdefault("log", [])
@@ -112,6 +112,29 @@ class T(unittest.TestCase):
 
     def test_outside_block_untouched(self):
         self.assertEqual(run("pipe!:\n  a = 1 | float\nb = 1 | 2")["b"], 3)
+
+    def test_map_macro(self):
+        ns = run("""
+            import random
+            def show(s): out.append(s)
+            out = []
+            pipe!:
+                16 | range | map!(random.randint(ord('a'), ord('z')) | chr) | ''.join | show
+                a = range(4) | map!(_ * _) | list
+                b = [[1, 2], [3]] | map!(_ | map!(_ + 1) | sum) | list
+                c = 10 | (range(3) | map!(_ + 1) | list) + [_]
+                d = A(log, 'ab') | map!(_.upper(), _) | dict
+                e = [1, 2] | map!(lambda k: _ + k) | map!(_(10)) | tuple
+            f = list(map!(_ | 4)([1, 2]))
+        """, A=ev("A"))
+        self.assertTrue(len(ns["out"][0]) == 16 and ns["out"][0].isalpha())
+        self.assertEqual(ns["a"], [0, 1, 4, 9]); self.assertEqual(ns["b"], [5, 4])
+        self.assertEqual(ns["c"], [1, 2, 3, 10]); self.assertEqual(ns["d"], {"A": "a", "B": "b"})
+        self.assertEqual(ns["e"], (11, 12)); self.assertEqual(ns["f"], [5, 6])
+        self.assertEqual(ns["log"], ["A"])
+        for bad in ("x = map!()", "x = map!(*a)"):
+            with self.assertRaises(SyntaxError):
+                run(bad)
 
     def test_errors(self):
         with self.assertRaises(SyntaxError) as cm:

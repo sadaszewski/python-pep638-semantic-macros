@@ -21,6 +21,20 @@ with it.  Pipes nest: in ``a | f(_, (b | g(_)))`` the second ``_`` is ``b``.
 A lambda with a parameter named ``_`` (or a comprehension looping over
 ``_``) keeps its own ``_``.
 
+``map!(expression)`` is a step that evaluates *expression* for every item of
+the piped iterable, with ``_`` standing for the item:
+
+    from! pipeop import map
+
+    pipe!:
+        16 | range | map!(random.randint(97, 122) | chr) | ''.join | print
+        range(5) | map!(_ * _) | list | print
+
+It expands to ``lambda it: map(lambda _: expression, it)``, so it also works
+outside of ``pipe!`` (``map!(_ + 1)(xs)``), where ``|`` keeps its usual
+meaning.  It has to be imported under the name ``map`` for ``pipe!`` to know
+that the ``_`` inside belongs to it.
+
 ``|`` is left alone in annotations, ``type`` statements, ``|=`` and
 ``case a | b`` patterns.  Everywhere else in the block it is a pipe, so
 for a bitwise or set/dict union use ``operator.or_(a, b)`` or leave the block.
@@ -29,9 +43,11 @@ for a bitwise or set/dict union use ``operator.or_(a, b)`` or leave the block.
 import ast
 import macros
 
-__all__ = ["pipe"]
+__all__ = ["pipe", "map"]
 
 PLACEHOLDER = "_"
+# Expression macros whose argument has its own placeholder.
+_BINDING_MACROS = {"map"}
 
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 # Steps without a placeholder that can never be called.
@@ -62,6 +78,8 @@ def _slots(node, out, parent=None, field=None, index=None):
     if isinstance(node, ast.Name):
         if node.id == PLACEHOLDER and isinstance(node.ctx, ast.Load):
             out.append((parent, field, index))
+        return
+    if isinstance(node, ast.MacroExpr) and node.name in _BINDING_MACROS:
         return
     if isinstance(node, ast.Lambda):
         a = node.args
@@ -108,6 +126,8 @@ def _simple(node):
         return _simple(node.value)
     if isinstance(node, ast.Lambda):
         return not node.args.defaults and not any(node.args.kw_defaults)
+    if isinstance(node, ast.MacroExpr):
+        return node.name in _BINDING_MACROS     # expands to a lambda
     return False
 
 
@@ -245,7 +265,7 @@ def _map(node):
     call = ast.Call(ast.Name("map", ast.Load()),
                     [item, ast.Name(it, ast.Load())], [])
     return ast.Lambda(args(it), call)
- 
- 
+
+
 # Defined last: from here on "map" is not the builtin in this module.
 map = macros.macro_processor(macros.EXPR_MACRO, 1)(_map)
